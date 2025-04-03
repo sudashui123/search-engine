@@ -20,6 +20,13 @@ tcpServerSock.listen(5)
 torch.set_num_threads(4)
 
 # 加载预训练模型
+
+# 使用本地路径加载模型
+# model_path = "D:/Code/Search/models/clip-ViT-B-32"
+# text_model_path = "D:/Code/Search/models/clip-ViT-B-32-multilingual-v1"
+#
+# model = SentenceTransformer(model_path)
+# text_model = SentenceTransformer(text_model_path)
 model = SentenceTransformer('clip-ViT-B-32')
 text_model = SentenceTransformer('clip-ViT-B-32-multilingual-v1')
 
