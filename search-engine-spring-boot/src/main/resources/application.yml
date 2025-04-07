@@ -1,5 +1,5 @@
 web:
-  upload-path: G:/images
+  upload-path: D:/Code/Search/images
 
 spring:
   resources:

@@ -156,26 +156,29 @@ public class addAllSeg {
      * @date: 2022-05-23 10:53
      */
     public void addSegs() {
-        // List<Record> records = recordService.queryAllRecord();
         List<String> segs = new ArrayList<>();
-        BloomFilter<String> bf = BloomFilter.create(Funnels.stringFunnel(Charset.forName("UTF-8")),10000000);
+        BloomFilter<String> bf = BloomFilter.create(Funnels.stringFunnel(Charset.forName("UTF-8")), 10000000);
+
         if (stopWordsSet == null) {
             stopWordsSet = new HashSet<>();
             loadStopWords(stopWordsSet, this.getClass().getResourceAsStream("/jieba/stop_words.txt"));
         }
+
         for (int loop = 0; loop < 300; loop++) {
             List<Record> records = recordService.selectPartialRecords(10000, Math.max(0, loop * 10000));
-            if (loop % 10 == 0 && loop != 0) {  // 这里注意loop应该不等于起始值，不一定非是0，因为起始值会空的，先这样写着。
+            System.out.println("Loop: " + loop + ", Fetched records: " + records.size());
+
+            if (loop % 10 == 0 && loop != 0) {
                 tDao.insert1(segs);
                 segs.clear();
             }
-            for (int i = loop * 10000; i < (loop + 1) * 10000; i++) {
-                Record record = records.get(i % 10000);
+
+            for (Record record : records) {
                 String caption = record.getCaption();
                 List<SegToken> segTokens = jiebaSegmenter.process(caption, JiebaSegmenter.SegMode.INDEX);
                 for (SegToken segToken : segTokens) {
                     String word = segToken.word;
-                    if (stopWordsSet.contains(word)) continue; // 判断是否是停用词
+                    if (stopWordsSet.contains(word)) continue;
                     if (!bf.mightContain(word)) {
                         bf.put(word);
                         segs.add(word);
@@ -183,8 +186,11 @@ public class addAllSeg {
                 }
             }
         }
+
+        // 插入最后剩下的分词
         tDao.insert1(segs);
     }
+
 
     @Test
     /**
@@ -199,51 +205,59 @@ public class addAllSeg {
         for (Segmentation seg : segmentations) {
             wordToId.put(seg.getWord(), seg.getId());
         }
+
         if (stopWordsSet == null) {
             stopWordsSet = new HashSet<>();
             loadStopWords(stopWordsSet, this.getClass().getResourceAsStream("/jieba/stop_words.txt"));
         }
+
         Map<Integer, List<T>> mp = new HashMap<>(100000);
         int cnt = 0;
+
         for (int loop = 0; loop < 300; loop++) {
             List<Record> records = recordService.selectPartialRecords(10000, Math.max(0, loop * 10000));
-            for (int i = loop * 10000; i < (loop + 1) * 10000; i++) {
-                Record record = records.get(i % 10000);
+
+            for (Record record : records) {
                 String caption = record.getCaption();
                 List<SegToken> segTokens = jiebaSegmenter.process(caption, JiebaSegmenter.SegMode.INDEX);
-                List<Keyword> keywords = tfidfAnalyzer.analyze(caption,5);
+                List<Keyword> keywords = tfidfAnalyzer.analyze(caption, 5);
                 Map<String, T> countMap = new HashMap<>();
+
                 for (SegToken segToken : segTokens) {
                     String word = segToken.word;
-                    if (stopWordsSet.contains(word)) continue;  // 判断是否是停用词
-                    int segId = wordToId.get(word);
+                    if (stopWordsSet.contains(word)) continue;
+
+                    // 避免 wordToId 为 null 抛出异常
+                    Integer segId = wordToId.get(word);
+                    if (segId == null) continue;
+
                     int dataId = record.getId();
                     double tf = 0;
+
                     for (Keyword v : keywords) {
                         if (v.getName().equals(word)) {
                             tf = v.getTfidfvalue();
                             break;
                         }
                     }
-                    if (!countMap.containsKey(word)){
-                        int count = 1;
-                        countMap.put(word, new T(dataId, segId, tf, count));
+
+                    if (!countMap.containsKey(word)) {
+                        countMap.put(word, new T(dataId, segId, tf, 1));
                     } else {
                         T t = countMap.get(word);
-                        int count = t.getCount();
-                        t.setCount(++count);
-                        countMap.put(word,t);
+                        t.setCount(t.getCount() + 1);
                     }
                 }
+
                 for (T t : countMap.values()) {
-                    int segId = t.getSegId();
-                    int idx = segId % 100;
-                    List list = mp.getOrDefault(idx, new ArrayList<>(10000));
+                    int idx = t.getSegId() % 100;
+                    List<T> list = mp.getOrDefault(idx, new ArrayList<>(10000));
                     list.add(t);
                     mp.put(idx, list);
                     cnt++;
                 }
-                if (cnt > 100000) {  // 之所以这么搞，是因为在最后直接insert的话，会爆堆空间，虽然我已经开了4个G但好像还是不行。
+
+                if (cnt > 100000) {
                     cnt = 0;
                     for (Integer idx : mp.keySet()) {
                         String tableName = "data_seg_relation_" + idx;
@@ -252,9 +266,10 @@ public class addAllSeg {
                     }
                     mp = new HashMap<>(100000);
                 }
-
             }
         }
+
+        // 插入最后剩下的
         if (cnt > 0) {
             for (Integer idx : mp.keySet()) {
                 String tableName = "data_seg_relation_" + idx;
@@ -263,6 +278,7 @@ public class addAllSeg {
             }
         }
     }
+
 
     private void loadStopWords(Set<String> set, InputStream in){
         BufferedReader bufr;
@@ -287,5 +303,4 @@ public class addAllSeg {
             e.printStackTrace();
         }
     }
-
 }

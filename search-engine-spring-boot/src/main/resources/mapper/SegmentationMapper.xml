@@ -33,7 +33,7 @@
     </select>
 
     <select id="selectOneSeg" resultType="com.searchengine.entity.Segmentation" parameterType="java.lang.String">
-        SELECT * FROM segmentation WHERE word=#{word}
+        SELECT * FROM segmentation WHERE word=#{word} limit 1
     </select>
 
     <insert id="insertSeg" parameterType="java.lang.String">
